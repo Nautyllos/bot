@@ -1,0 +1,16 @@
+{
+  "name": "chatbot",
+  "version": "1.0.0",
+  "description": "Chatbot para pizzería",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "whatsapp-web.js": "^1.15.0",
+    "qrcode-terminal": "^0.12.0",
+    "googleapis": "^105.0.0",
+    "openai": "^3.2.1",
+    "fs": "0.0.1-security"
+  }
+}
