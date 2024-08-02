@@ -1,3 +1,4 @@
+require("dotenv").config();
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const { google } = require("googleapis");
@@ -7,15 +8,32 @@ const client = new Client({
   authStrategy: new LocalAuth(),
 });
 
-// Configurar Google Sheets API
+// Configurar Google Sheets API usando variables de entorno
 async function authorize() {
-  const auth = new google.auth.GoogleAuth({
-    keyFile: "./credentials.json", // Reemplaza con la ruta a tu archivo de credenciales JSON
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-  });
-  const authClient = await auth.getClient();
-  google.options({ auth: authClient });
-  return authClient;
+  try {
+    const auth = new google.auth.GoogleAuth({
+      credentials: {
+        type: process.env.TYPE,
+        project_id: process.env.PROJECT_ID,
+        private_key_id: process.env.PRIVATE_KEY_ID,
+        private_key: process.env.PRIVATE_KEY.replace(/\\n/g, "\n"), // Asegúrate de reemplazar los caracteres de nueva línea
+        client_email: process.env.CLIENT_EMAIL,
+        client_id: process.env.CLIENT_ID,
+        auth_uri: process.env.AUTH_URI,
+        token_uri: process.env.TOKEN_URI,
+        auth_provider_x509_cert_url: process.env.AUTH_PROVIDER_X509_CERT_URL,
+        client_x509_cert_url: process.env.CLIENT_X509_CERT_URL,
+        universe_domain: process.env.UNIVERSE_DOMAIN,
+      },
+      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    });
+    const authClient = await auth.getClient();
+    google.options({ auth: authClient });
+    return authClient;
+  } catch (error) {
+    console.error("Error en la autorización:", error);
+    throw error;
+  }
 }
 
 // ID de tu Google Sheet y rango del menú
@@ -32,6 +50,10 @@ async function getMenuFromSheet(auth) {
     });
     console.log("Datos obtenidos de Google Sheets:", res.data);
     const rows = res.data.values;
+    if (!rows || rows.length === 0) {
+      console.log("No se encontraron datos en la hoja.");
+      return {};
+    }
     const menuCategories = {};
     rows.forEach((row, index) => {
       if (index === 0) return; // Salta el encabezado
@@ -89,8 +111,12 @@ client.on("qr", (qr) => {
 
 client.on("ready", async () => {
   console.log("Client is ready!");
-  const auth = await authorize();
-  client.auth = auth; // Guardar la autenticación para su reutilización
+  try {
+    const auth = await authorize();
+    client.auth = auth; // Guardar la autenticación para su reutilización
+  } catch (error) {
+    console.error("Error al inicializar el cliente:", error);
+  }
 });
 
 const userStates = {};
@@ -98,19 +124,6 @@ const userStates = {};
 client.on("message", async (message) => {
   console.log("Mensaje recibido:", message.body);
   const userId = message.from;
-  const triggerWords = [
-    "buenos dias",
-    "buenas tardes",
-    "buenas noches",
-    "hola",
-    "pedido",
-    "pizza",
-    "pizzeria",
-    "hamburguesas",
-    "lasañas",
-    "quiero",
-    "pedir",
-  ];
 
   if (!userStates[userId]) {
     userStates[userId] = { step: 0, total: 0, orders: [] };
@@ -119,13 +132,10 @@ client.on("message", async (message) => {
   const userState = userStates[userId];
   console.log(`Estado actual del usuario ${userId}:`, userState);
 
-  // Solo verifica las palabras clave si el usuario no está en una conversación activa
-  if (
-    userState.step === 0 &&
-    !triggerWords.some((word) => message.body.toLowerCase().includes(word))
-  ) {
-    console.log("Mensaje no contiene palabras clave, ignorando.");
-    return; // Si el mensaje no contiene ninguna palabra desencadenante, no activar el bot
+  // Solo activa el bot con la palabra "pedido"
+  if (userState.step === 0 && !message.body.toLowerCase().includes("pedido")) {
+    console.log("Mensaje no contiene la palabra 'pedido', ignorando.");
+    return; // Si el mensaje no contiene la palabra 'pedido', no activar el bot
   }
 
   if (!isWithinOperatingHours()) {
@@ -156,6 +166,10 @@ client.on("message", async (message) => {
     Object.keys(menuCategories).forEach((cat, index) => {
       categoriesMessage += `${index + 1}. ${cat}\n`;
     });
+    if (Object.keys(menuCategories).length === 0) {
+      categoriesMessage =
+        "Lo siento, no hay categorías disponibles en este momento.";
+    }
     console.log("Mensaje de categorías:", categoriesMessage);
     await message.reply(categoriesMessage);
     userState.step = 2;
